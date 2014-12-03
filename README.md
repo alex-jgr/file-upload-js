@@ -7,10 +7,10 @@ JQuery ajax upload plugin
 </p>
 
 <pre>
-    <div class="input-group">
-        <label class="input-group-addon">Image</label>
-        <input class="form-control" type="file" name="image" id="image"/>
-    </div>
+    &lt;div class="input-group"&gt;
+        &lt;label class="input-group-addon"&gt;Image&lt;/label&gt;
+        &lt;input class="form-control" type="file" name="image" id="image"/&gt;
+    &lt;/div&gt;
 </pre>
 
 <p>
