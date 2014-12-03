@@ -1,18 +1,3 @@
-/*
- * 
-  Example:
-  $(document).ready(function(){
-       $("#image").fileUpload({
-           url: "/team/save_picture",
-           uploadOn: {
-               selector: "#image",
-               clientEvent: "change"
-           }
-       });
-  });
-
- */
-
 (function ( $ ){
     $.fn.fileUpload = function( options ) {
         var files = [];
@@ -27,18 +12,19 @@
             },
             before:     function() {},
             after:      function() {},
-            responseType: "json",
+            responseType: "json",            
             container:  $(this).parent(),
+            input:      "input[type=file]",
             uploadOn:   {
                         selector: "#file-upload", 
                         clientEvent: "click"
                     }
         }, options);
          
-        $(settings.container).on("change", $(this), function(event){
+        $(settings.container).on("change", $(settings.input), function(event){
             var input_name = $(event.target).attr("name");
             
-            $(event.target.files).each(function(index, value){
+            $ (event.target.files).each(function(index, value) {
                 files.push({data: value, name: input_name});
             });          
         });
@@ -51,7 +37,6 @@
                     var filesData = new FormData();
            
                     $(files).each(function(index, value){
-                        console.log(value.data);
                         filesData.append(value.name, value.data);
                     });
            
@@ -76,7 +61,8 @@
                         },
                         
                         complete:   function() {
-                             settings.after;
+                            $(settings.input).val(null);
+                             settings.after();
                         }
                     });
                     
