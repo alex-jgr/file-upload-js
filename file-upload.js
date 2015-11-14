@@ -47,6 +47,7 @@
                     break;
                 case "additionalData" :
                     return uploaders[uploaderIndex].additionalData(value);
+                    break;
                 case "remove" :
                     $(this).removeClass("file-upload-jq");
                     uploaders.splice(uploaderIndex, 1);
