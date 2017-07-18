@@ -227,6 +227,7 @@
                     settings.error = null;
                     if (!waitForFiles) {
                         clearInterval(filesCheckInterval);
+                        waitForFiles = true;
                         $(files).each(function(index, value){
                             if (! value.name ) {
                                 value.name = settings.inputName;
