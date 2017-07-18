@@ -47,10 +47,18 @@
                     break;
                 case "additionalData" :
                     return uploaders[uploaderIndex].additionalData(value);
-                    break;
                 case "remove" :
                     $(this).removeClass("file-upload-jq");
                     uploaders.splice(uploaderIndex, 1);
+                    break;
+                case "progress":
+                    return uploaders[uploaderIndex].progress;
+                    break;
+                case "allowedFileTypes":
+                    return uploaders[uploaderIndex].allowedFileTypes(value);
+                    break;
+                case "onFileChange":
+                    return uploaders[uploaderIndex].onFileChange(value);
                     break;
                 default: console.log("Oh! What do we have here? It looks strange. Have a look at it: ", options);
             }
@@ -59,10 +67,13 @@
         
         function Uploader (element, options) 
         {
-            var $this = this;
-            
-            var files = [];
+            var $this           = this;
+            var waitForFiles    = false;
+            var files           = [];
             var filesCheckInterval;
+            
+            $this.progress = 0;
+            
             var settings = $.extend({
                 url:            "/upload.php",
                 onSuccess:      function(response){
@@ -71,20 +82,24 @@
                 onError:        function(response){
                                     console.log("Upload failed");
                                 },
-                before:         function ($this) {},
+                before:         function () {},
                 beforeAjaxSend: function () {},
+                onProgress:     function () {},
                 after:          function () {},
+                onFileChange:   function () {},
                 responseType:   "json",            
                 container:      $(element).parent(),
-                input:          "input[type=file]",
+                input:          element.selector,
                 // Default inputName will be the name of the input html tag used. If used for multiple files, provide an array like "files[]"
-                inputName:      null,
+                inputName:      $(element.selector).attr("name"),
                 additionalData: {},
                 uploadOn:       {
-                                    selector: "#file-upload", 
-                                    clientEvent: "click"
-                                }
-            }, options);            
+                                    selector: element.selector, 
+                                    clientEvent: "change"
+                                },
+                allowedFileTypes: [],
+                error:          null
+            }, options);
             
             $this.url = function(value) {
                 console.log("Value: ", value);
@@ -99,7 +114,7 @@
                 if (value) {
                     settings.onSuccess = value;
                 } else {
-                    settings.onSuccess;
+                    settings.onSuccess();
                 }
             };
             
@@ -107,7 +122,7 @@
                 if (value) {
                     settings.onError = value;
                 } else {
-                    return settings.onError;
+                    return settings.onError();
                 }
             };
             
@@ -177,61 +192,125 @@
                 return this.id;
             };
             
-            $(settings.container).on("change", $(settings.input), function(event){
-                var input_name = $(event.target).attr("name");
-                $ (event.target.files).each(function(index, value) {
-                    files.push({data: value, name: input_name});
-                });          
+            $this.allowedFileTypes = function(value) {
+                if (value) {
+                    settings.allowedFileTypes = value;
+                } else {
+                    return settings.allowedFileTypes;
+                }
+            };
+            
+            
+            $(settings.container).on("change", settings.input, function(event){
+                waitForFiles = true;
+                if (!settings.inputName) {
+                    settings.inputName = $(event.target).attr("name");
+                }
+                if (settings.inputName != null) {
+                    $ (event.target.files).each(function(index, value) {
+                        files.push({data: value, name: settings.inputName});
+                    });
+                }
+                if (files.length) {
+                    waitForFiles = false;
+                }
+                settings.onFileChange(event.target.files[0], settings);
+                if (settings.error) {
+                    settings.onError(settings.error);
+                }
             });
             
             $(settings.container).on(settings.uploadOn.clientEvent, settings.uploadOn.selector, function(event) {
-                settings.before($this);
+                settings.before($this, event);
                 filesCheckInterval = setInterval(function() {
-                    if (files.length) {
+                    var formData = new FormData();
+                    settings.error = null;
+                    if (!waitForFiles) {
                         clearInterval(filesCheckInterval);
-                        var filesData = new FormData();
-                        
                         $(files).each(function(index, value){
-                            if (! value.name) {
+                            if (! value.name ) {
                                 value.name = settings.inputName;
+                            } 
+                            console.log("[FILE NAME]: ", value.name);
+                            settings.current_file = value.data;
+                            
+                            if (settings.allowedFileTypes.length) {
+                                if (settings.allowedFileTypes.indexOf(value.data.type) > -1) {
+                                    formData.append(value.name, value.data);
+                                    settings.error = null;
+                                } else {
+                                    settings.error = "Forkert filformat: '" + value.data.type + "'";
+                                }
+                            } else {
+                                formData.append(value.name, value.data);
+                                console.log("File type", value.data.type);
                             }
-                            filesData.append(value.name, value.data);
                         });
                         
-                        // In case sending additional data together with the file upload is necessary. Additional data must be a JSON object
-                        
-                        if (settings.additionalData) {
-                            for(var key in settings.additionalData) {
-                                filesData.append(key, settings.additionalData[key]);
-                            }
+                        if (!settings.error) {
+                            //start of ajax request
+                            $.ajax({
+                                url:            settings.url,
+                                xhr:            function(){
+                                                    // get the native XmlHttpRequest object
+                                                    var xhr = $.ajaxSettings.xhr() ;
+                                                    // set the onprogress event handler
+                                                    xhr.upload.onprogress = function (event) {
+                                                        if (event.lengthComputable) {  
+                                                            $this.progress = (event.loaded / event.total) * 100;
+                                                            settings.onProgress($this.progress);
+                                                        }
+                                                    };
+                                                    // return the customized object
+                                                    return xhr ;
+                                                },
+                                xhrFields:      {
+                                                    withCredentials: true
+                                                },
+                                type:           "POST",
+                                data:           formData,
+                                cache:          true,
+                                dataType:       settings.responseType,
+                                processData:    false,
+                                contentType:    false,
+                                beforeSend:     function(XMLHttpRequest, settingsObject) {
+                                    settings.beforeAjaxSend(XMLHttpRequest, settings);
+                                    
+                                    if (settings.error) {
+                                        XMLHttpRequest.abort();
+                                        settings.onError(settings.error);
+                                    } else {
+                                        // In case sending additional data together with the file upload is necessary
+                                        if (settings.additionalData) {
+                                            for(var key in settings.additionalData) {
+                                                formData.append(key, settings.additionalData[key]);
+                                            }
+                                        }
+                                    }
+                                },
+
+                                success:        function(response, textStatus, jqXHR) {
+                                    files = [];
+                                    formData = new FormData();
+                                    settings.onSuccess(response, textStatus, jqXHR);
+                                },
+
+                                error:      function(response, textStatus, jqXHR) {
+                                    settings.onError(response, textStatus, jqXHR);
+                                    console.log("Error:", response, textStatus, jqXHR);
+                                },
+
+                                complete:   function() {
+                                    $(settings.input).val(null);
+                                     settings.after();
+                                }
+                            });
+
+                            //end of ajax request
+                        } else {
+                            console.log(settings.error);
+                            settings.onError(settings.error);
                         }
-                        //start of ajax request
-
-                        $.ajax({
-                            url:            settings.url,
-                            type:           "POST",
-                            data:           filesData,
-                            cache:          false,
-                            dataType:       settings.responseType,
-                            processData:    false,
-                            contentType:    false,
-                            beforeSend:     settings.beforeAjaxSend,
-
-                            success:        function(response, textStatus, jqXHR) {
-                                settings.onSuccess(response, textStatus, jqXHR);
-                            },
-
-                            error:      function(response, textStatus, jqXHR) {
-                                settings.onError(response, textStatus, jqXHR);
-                            },
-
-                            complete:   function() {
-                                $(settings.input).val(null);
-                                 settings.after();
-                            }
-                        });
-
-                        //end of ajax request
                     }
                 }, 300);
             });
